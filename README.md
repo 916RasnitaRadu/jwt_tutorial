@@ -1,30 +1,33 @@
 # Securing a REST API with JWT in Go
 
-This tutorial explains how to secure a REST API in Go using JSON Web Tokens (JWT). We’ll cover:
-- Creating a JWT on login
-- Understanding JWT claims
-- Protecting routes using middleware
-- A common mistake where middleware appears not to work (and how to fix it)
+This tutorial explains how to secure a REST API in Go using **JSON Web Tokens (JWT)**.
 
 ---
 
 ## Prerequisites
-Install the JWT library
+
+- Go 1.20+
+- Basic knowledge of HTTP in Go
+- `github.com/golang-jwt/jwt/v5`
+
+Install the dependency:
 
 ```bash
 go get github.com/golang-jwt/jwt/v5
 ```
+
 ---
 
-## Overview: How JWT Authentication Works
-1. User logs in with credentials
-2. Server validates credentials
-3. Server generates a signed JWT
-4. Client stores the token
-5. Client sends the token with each request
-6. Middleware validates the token before allowing access
+## How JWT Authentication Works
 
-JWTs are **stateless**, meaning the server does not store session data.
+1. User logs in with credentials  
+2. Server validates the credentials  
+3. Server generates a signed JWT  
+4. Client stores the token  
+5. Client sends the token with each request  
+6. Middleware validates the token  
+
+JWT authentication is **stateless**, meaning no session storage is required.
 
 ---
 
@@ -39,7 +42,7 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Username != OurUser.Username || req.Password != OurUser.Password {
-		http.Error(w, "invalid credentials", http.StatusUnauthorized)
+		http.Error(w, "invalid credentials", http.StatusUnauthorized) // validating the credentials
 		return
 	}
 
@@ -49,7 +52,7 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 		"exp": time.Now().Add(24 * time.Hour).Unix(),
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims) // generating a new token
 	signed, err := token.SignedString(JwtKey)
 	if err != nil {
 		http.Error(w, "server error", http.StatusInternalServerError)
@@ -73,6 +76,13 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 | `iat` | Issued at |
 | `exp` | Expiration time |
 
+
+### What are JWT claims?
+
+Claims are pieces of information stored inside a JWT.
+They are key–value pairs that describe the authenticated user and the token itself.
+
+
 ---
 
 ## Sending the Token from the Client
@@ -84,6 +94,9 @@ Authorization: Bearer <JWT_TOKEN>
 ---
 
 ## JWT Authentication Middleware
+
+A **middleware function** is a piece of code that runs between an incoming request and the final handler, allowing you to inspect, modify, or block the request before it reaches the endpoint (for example, to handle authentication, logging, or validation).
+In our case we use the next middleware function to check if the token is present and if it's valid. In other case, we will reject the request and send an `401 Unauthorized` response.
 
 ```go
 type contextKey string
@@ -105,7 +118,7 @@ func jwtAuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		tokenStr := parts[1]
-		token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
+		token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) { // parsing the token using the JWT key
 			if t.Method.Alg()[:2] != "HS" {
 				return nil, jwt.ErrTokenSignatureInvalid
 			}
@@ -128,6 +141,10 @@ func jwtAuthMiddleware(next http.Handler) http.Handler {
 ## Accessing Claims in Handlers
 
 ```go
+/*
+	Here we extract the claims from the request and converting them to jwt.MapClaims type.
+	After that, we extract the username from the claims. (i.e. claims["sub"])
+*/
 claims := r.Context().Value(ClaimsContextKey).(jwt.MapClaims)
 username := claims["sub"].(string)
 ```
@@ -135,6 +152,9 @@ username := claims["sub"].(string)
 ---
 
 ## Protecting Routes (IMPORTANT)
+
+It is important to note that a middleware does **not** run automatically.
+If it’s not attached to the route, it won’t execute.
 
 ### ❌ Wrong (middleware not applied)
 
@@ -153,16 +173,9 @@ http.Handle(
 
 ---
 
-## Common Pitfall
-
-Middleware does **not** run automatically.  
-If it’s not attached to the route, it won’t execute.
-
----
-
 ## JWT Secret
 
-Use the same secret everywhere:
+Use the same secret everywhere: (and for the better, DON'T STORE IT IN THE SOURCE CODE)
 
 ```go
 var JwtKey = []byte("supersecretkey")
@@ -172,24 +185,9 @@ Store secrets in environment variables in production.
 
 ---
 
-## Security Best Practices
+## Other Security Best Practices
 
 - Use HTTPS
 - Set expiration times
 - Never store sensitive data in JWT claims
 - Keep secrets out of source control
-
----
-
-## Conclusion
-
-JWT allows you to build secure, stateless APIs in Go.  
-Correct middleware attachment is critical for proper authorization.
-
----
-
-## Next Steps
-
-- Add role-based authorization  
-- Implement refresh tokens  
-- Add middleware tests  
